@@ -1,0 +1,38 @@
+# Prometheus alerting rules for Gjallar. Plain rules file (prometheus.yml
+# rule_files) or wrap in a PrometheusRule (kube-prometheus) via kustomize.
+# Wording follows the philosophy: say what and why, no alarmism.
+groups:
+  - name: gjallar
+    rules:
+      - alert: GjallarUrgentFindings
+        expr: max(gjallar_open_findings{band="urgent"}) > 0
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} open finding(s) ranked urgent"
+          description: "Urgent = exploited or highly likely, reachable, usually fixable. See the Risks page for the reasons behind each one."
+      - alert: GjallarKnownExploitedFindings
+        expr: max(gjallar_open_kev_findings) > 0
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} open finding(s) are in CISA KEV"
+          description: "These CVEs are exploited in the wild. Check fix availability and runtime reachability in Gjallar before deciding."
+      - alert: GjallarJobsDropped
+        expr: increase(gjallar_messages_total{outcome="dead"}[1h]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Gjallar gave up on {{ $value }} job(s) in the last hour"
+          description: "A scan, match, licence or patch job failed after all retries; results for some images may be stale. Check worker logs."
+      - alert: GjallarVulnDBStale
+        expr: time() - max(kube_cronjob_status_last_successful_time{cronjob=~".*gjallar-db-refresh"}) > 2 * 86400
+        labels: { severity: warning }
+        annotations:
+          summary: "Vulnerability DB not refreshed for 2 days"
+          description: "Grype refuses DBs older than 5 days; after that vulnerability matching stops. Check the db-refresh CronJob."
+      - alert: GjallarEngineErrors
+        expr: sum by (engine) (increase(gjallar_engine_runs_total{outcome="error"}[1h])) > 5
+        labels: { severity: info }
+        annotations:
+          summary: "{{ $labels.engine }} failed {{ $value }} times in the last hour"
+          description: "Often registry auth or network to a registry. Gjallar keeps working with the last good data."
